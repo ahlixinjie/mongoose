@@ -31,7 +31,9 @@ var (
 
 const (
 	maximumCallerDepth int = 25
-	knownLogrusFrames  int = 4
+	knownLogrusFrames  int = 7
+
+	logrusPackageName = "github.com/sirupsen/logrus"
 )
 
 type MyFormatter struct {
@@ -86,7 +88,7 @@ func (m *MyFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 }
 
 // getCaller retrieves the name of the first log calling function
-//copied from logrus
+// copied from logrus
 func getCaller() *runtime.Frame {
 	// cache this package's fully-qualified name
 	callerInitOnce.Do(func() {
@@ -113,10 +115,11 @@ func getCaller() *runtime.Frame {
 	for f, again := frames.Next(); again; f, again = frames.Next() {
 		pkg := getPackageName(f.Function)
 
+		//fmt.Println(pkg, f.Function, f.Line)
+
 		// If the caller isn't part of this package, we're done
-		if pkg != packageName {
-			//return &f //nolint:scopelint
-			fmt.Println(pkg, f.Function, f.Line)
+		if pkg != packageName && pkg != logrusPackageName {
+			return &f //nolint:scopelint
 		}
 	}
 
@@ -146,6 +149,13 @@ func Info(args ...interface{}) {
 
 func Infof(format string, args ...interface{}) {
 	logrus.Infof(format, args...)
+}
+
+func Error(args ...interface{}) {
+	logrus.Error(args...)
+}
+func Errorf(format string, args ...interface{}) {
+	logrus.Errorf(format, args...)
 }
 
 func WithField(key string, value interface{}) *logrus.Entry {
