@@ -3,7 +3,7 @@ package grpc
 import (
 	"fmt"
 	"github.com/ahlixinjie/mongoose/log"
-	"github.com/ahlixinjie/mongoose/transport"
+	"github.com/ahlixinjie/mongoose/transport/common"
 	"github.com/ahlixinjie/mongoose/utils/parse"
 	"go.uber.org/dig"
 	"google.golang.org/grpc"
@@ -12,23 +12,19 @@ import (
 	"os"
 )
 
-const (
-	confKeyRPC = "RPC"
-)
-
 type Service struct {
-	port   int
+	port   string
 	server *grpc.Server
 }
 
-func (s *Service) Provide() (constructor interface{}, opts []dig.ProvideOption) {
+func (s *Service) Provide() (constructor interface{}, _ []dig.ProvideOption) {
 	type conf struct {
 		dig.In
 		Conf map[string]interface{} `name:"dig_conf"`
 	}
 	constructor = func(c conf) *grpc.Server {
 		config := c.Conf
-		v, ok := config[transport.ConfKeyPort]
+		v, ok := config[common.ConfKeyPort]
 		if !ok {
 			return nil
 		}
@@ -37,14 +33,13 @@ func (s *Service) Provide() (constructor interface{}, opts []dig.ProvideOption) 
 		if !ok {
 			return nil
 		}
-		portStr := vv[confKeyRPC].(string)
-		s.port = parse.Port(portStr)
-		if s.port == 0 {
-			s.port = parse.Port(os.Getenv(portStr))
+		s.port = vv[common.ConfKeyRPC].(string)
+		if parse.Port(s.port) == 0 {
+			s.port = os.Getenv(s.port)
 		}
 
-		if s.port == 0 {
-			panic("not set rpc port")
+		if len(s.port) == 0 {
+			return nil
 		}
 		s.server = grpc.NewServer()
 		return s.server
@@ -53,10 +48,11 @@ func (s *Service) Provide() (constructor interface{}, opts []dig.ProvideOption) 
 }
 
 func (s *Service) Start() (err error) {
-	if s.port == 0 {
+	if len(s.port) == 0 {
+		fmt.Println("not set rpc service")
 		return
 	}
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
+	lis, err := net.Listen("tcp", s.port)
 	if err != nil {
 		return err
 	}

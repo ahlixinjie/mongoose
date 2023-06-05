@@ -7,6 +7,7 @@ import (
 	"github.com/ahlixinjie/mongoose/container"
 	"github.com/ahlixinjie/mongoose/model"
 	"github.com/ahlixinjie/mongoose/transport/grpc"
+	"github.com/ahlixinjie/mongoose/transport/http"
 	"go.uber.org/dig"
 	"os"
 	"os/signal"
@@ -24,7 +25,7 @@ type app struct {
 }
 
 func Run(elements ...interface{}) {
-	elements = append(elements, config.F, &grpc.Service{})
+	elements = append(elements, config.F, &grpc.Service{}, &http.Service{})
 	a := newApp(elements...)
 	a.run()
 	a.waitStop()
@@ -36,16 +37,24 @@ func (a *app) run() {
 		if err := dig.Visualize(container.GetContainer(), b); err != nil {
 			panic(err)
 		}
-		os.WriteFile("./app.dot", b.Bytes(), 0644)
+		if err := os.WriteFile("./app.dot", b.Bytes(), 0644); err != nil {
+			fmt.Println(err)
+		}
 	}()
 	for _, v := range a.providers {
 		c, opts := v.Provide()
+		if c == nil {
+			continue
+		}
 		if err := container.GetContainer().Provide(c, opts...); err != nil {
 			panic(err)
 		}
 	}
 	for _, v := range a.invokers {
 		f, opts := v.Invoke()
+		if f == nil {
+			continue
+		}
 		if err := container.GetContainer().Invoke(f, opts...); err != nil {
 			panic(err)
 		}
