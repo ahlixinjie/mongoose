@@ -41,10 +41,12 @@ func main() {
 	}
 
 	writeProto()
+	writeAPIInit()
 	writeBufConfig()
 	writeServiceConfig()
 	writeGrpcController()
 	writeHttpController()
+	writeControllerInit()
 	writeMain()
 	if _, err = setCommandDir(exec.Command("go", "mod", "tidy"), *dirNameFlag).Output(); err != nil {
 		panic(err)
@@ -60,19 +62,47 @@ func writeMain() {
 	content := fmt.Sprintf(`package main
 
 import (
+	"%s/api"
+	"%s/internal/controller"
 	"github.com/ahlixinjie/mongoose"
-	"%s/internal/controller/grpc"
-	"%s/internal/controller/http"
 )
 
 func main() {
 	mongoose.Run(
-		new(grpc.Impl),
-		new(http.Impl),
+		api.Module,
+		controller.Module,
 	)
 }
+
 `, *moduleNamFlag, *moduleNamFlag)
 	if err := os.WriteFile(fmt.Sprintf("%s/cmd/run/main.go", *dirNameFlag), []byte(content), 0644); err != nil {
+		panic(err)
+	}
+}
+
+func writeControllerInit() {
+	service := FirstUpper(serviceName())
+	content := fmt.Sprintf(`package controller
+
+import (
+	api "%s/api/http"
+	controllergrpc "%s/internal/controller/grpc"
+	"%s/internal/controller/http"
+	"go.uber.org/fx"
+	"google.golang.org/grpc"
+)
+
+var Module = fx.Module("internal.controller",
+	fx.Provide(func() api.%sServer {
+		return &http.Impl{}
+	}),
+	fx.Invoke(func(server *grpc.Server, %sServer api.%sServer) {
+		impl := &controllergrpc.Impl{%sServer: %sServer}
+		api.Register%sServer(server, impl)
+	}),
+)
+`, *moduleNamFlag, *moduleNamFlag, *moduleNamFlag, service, service, service, service, service, service)
+	if err := os.WriteFile(fmt.Sprintf("%s/internal/controller/init.go", *dirNameFlag), []byte(content), 0644); err != nil {
 		panic(err)
 	}
 }
@@ -82,30 +112,18 @@ func writeHttpController() {
 
 import (
 	"context"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	api "%s/api/http"
-	"go.uber.org/dig"
-	"google.golang.org/grpc"
 )
 
 type Impl struct {
+	api.Unimplemented%sServer
 }
 
-func (i *Impl) Provide() (constructor interface{}, _ []dig.ProvideOption) {
-	type conf struct {
-		dig.Out
-		Handler     *runtime.ServeMux
-		GatewayFunc func(context.Context, *runtime.ServeMux, string, []grpc.DialOption) (err error)
-	}
-
-	constructor = func() conf {
-		return conf{
-			Handler:     runtime.NewServeMux(),
-			GatewayFunc: api.Register%sHandlerFromEndpoint,
-		}
-	}
+func (i *Impl) Echo(ctx context.Context, request *api.StringMessage) (response *api.StringMessage, err error) {
+	response = &api.StringMessage{Value: "from http " + request.GetValue()}
 	return
 }
+
 `, *moduleNamFlag, FirstUpper(serviceName()))
 	if err := os.WriteFile(fmt.Sprintf("%s/internal/controller/http/init.go", *dirNameFlag), []byte(content), 0644); err != nil {
 		panic(err)
@@ -117,28 +135,13 @@ func writeGrpcController() {
 	content := fmt.Sprintf(`package grpc
 
 import (
-	"context"
 	api "%s/api/http"
-	"go.uber.org/dig"
-	"google.golang.org/grpc"
 )
 
 type Impl struct {
-	api.Unimplemented%sServer
+	api.%sServer
 }
-
-func (i *Impl) Invoke() (function interface{}, opts []dig.InvokeOption) {
-	function = func(server *grpc.Server) {
-		api.Register%sServer(server, new(Impl))
-	}
-	return
-}
-
-func (i *Impl) Echo(ctx context.Context, request *api.StringMessage) (response *api.StringMessage, err error) {
-	response = &api.StringMessage{Value: request.GetValue()}
-	return
-}
-`, *moduleNamFlag, service, service)
+`, *moduleNamFlag, service)
 	if err := os.WriteFile(fmt.Sprintf("%s/internal/controller/grpc/init.go", *dirNameFlag), []byte(content), 0644); err != nil {
 		panic(err)
 	}
@@ -200,6 +203,33 @@ plugins:
 		panic(err)
 	}
 
+}
+
+func writeAPIInit() {
+	content := fmt.Sprintf(`package api
+
+import (
+	"context"
+	"%s/api/http"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"go.uber.org/fx"
+	"google.golang.org/grpc"
+)
+
+var Module = fx.Module("api",
+	fx.Provide(func() func(context.Context, *runtime.ServeMux, string, []grpc.DialOption) (err error) {
+		return http.Register%sHandlerFromEndpoint
+	}),
+	fx.Provide(func() *runtime.ServeMux {
+		return runtime.NewServeMux()
+	}),
+)
+`, *moduleNamFlag, FirstUpper(serviceName()))
+
+	err := os.WriteFile(fmt.Sprintf("%s/api/init.go", *dirNameFlag), []byte(content), 0644)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func writeProto() {
