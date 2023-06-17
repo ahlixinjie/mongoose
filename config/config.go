@@ -2,39 +2,18 @@ package config
 
 import (
 	"fmt"
-	"io/ioutil"
-	"os"
-
-	"go.uber.org/dig"
-	"gopkg.in/yaml.v3"
-
-	"github.com/ahlixinjie/mongoose/model"
 	"github.com/ahlixinjie/mongoose/utils/env"
+	"go.uber.org/config"
 )
 
 const (
-	DigName = "dig_conf"
+	InjectName = "conf"
 )
 
-var F model.ProvideFunc = func() (constructor interface{}, opts []dig.ProvideOption) {
-	e := env.GetEnv()
-
-	file, err := os.Open(fmt.Sprintf("config/%s.yaml", e))
+func NewProvider() (*config.YAML, error) {
+	yaml, err := config.NewYAML(config.File(fmt.Sprintf("config/%s.yaml", env.GetEnv())))
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-
-	b, err := ioutil.ReadAll(file)
-	if err != nil {
-		panic(err)
-	}
-
-	config := make(map[string]interface{})
-	err = yaml.Unmarshal(b, &config)
-	if err != nil {
-		panic(err)
-	}
-	return func() map[string]interface{} {
-		return config
-	}, []dig.ProvideOption{dig.Name(DigName)}
+	return yaml, nil
 }

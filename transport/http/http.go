@@ -2,12 +2,15 @@ package http
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/ahlixinjie/mongoose/log"
 	"github.com/ahlixinjie/mongoose/transport/common"
+	transport_grpc "github.com/ahlixinjie/mongoose/transport/grpc"
 	"github.com/ahlixinjie/mongoose/utils/parse"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"go.uber.org/dig"
+	"go.uber.org/config"
+	"go.uber.org/fx"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"net/http"
@@ -19,57 +22,56 @@ type Service struct {
 	handler http.Handler
 }
 
-func (s *Service) Invoke() (function interface{}, _ []dig.InvokeOption) {
-	type conf struct {
-		dig.In
-		Conf        map[string]interface{} `name:"dig_conf"`
-		Handler     *runtime.ServeMux
-		GatewayFunc func(context.Context, *runtime.ServeMux, string, []grpc.DialOption) (err error)
-	}
+var (
+	port    int
+	handler http.Handler
+	server  *http.Server
+)
 
-	function = func(c conf) {
-		config := c.Conf
-		v, ok := config[common.ConfKeyPort]
-		if !ok {
-			return
-		}
-		vv, ok := v.(map[string]interface{})
-		if !ok {
-			return
-		}
-
-		s.port = vv[common.ConfKeyHTTP].(string)
-		if parse.Port(s.port) == 0 {
-			s.port = os.Getenv(s.port)
-		}
-
-		if len(s.port) == 0 {
-			return
-		}
-
-		if err := c.GatewayFunc(context.Background(), c.Handler, vv[common.ConfKeyRPC].(string),
-			[]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}); err != nil {
-			panic(err)
-		}
-
-		s.handler = c.Handler
-	}
-	return
+type params struct {
+	fx.In
+	Lc          fx.Lifecycle
+	Config      *config.YAML
+	Handler     *runtime.ServeMux
+	GatewayFunc func(context.Context, *runtime.ServeMux, string, []grpc.DialOption) (err error)
 }
 
-func (s *Service) Start() (err error) {
-	if len(s.port) == 0 {
-		fmt.Println("not set HTTP service")
+func NewHTTPServer(p params) (err error) {
+	portStr := p.Config.Get(common.ConfKeyPort + "." + common.ConfKeyHTTP).String()
+	port = parse.Port(portStr)
+	if port == 0 && len(portStr) != 0 {
+		//try to get port from env
+		port = parse.Port(os.Getenv(portStr))
+	}
+	if port == 0 {
+		log.Info("won't start http service")
+		return
+	}
+	if err = p.GatewayFunc(context.Background(), p.Handler, fmt.Sprintf(":%d", transport_grpc.GetPort()),
+		[]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}); err != nil {
 		return
 	}
 
-	go func() {
-		log.Info("start http")
-		err := http.ListenAndServe(s.port, s.handler)
-		if err != nil {
-			panic(err)
-		}
-	}()
+	handler = p.Handler
+	p.Lc.Append(fx.StartHook(start))
+	p.Lc.Append(fx.StopHook(stop))
+	return
+}
 
-	return nil
+func start() {
+	go func() {
+		log.Info("start http service")
+		server = &http.Server{Addr: fmt.Sprintf(":%d", port), Handler: handler}
+		err := server.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			log.Info("http service has been shutdown")
+			return
+		}
+		panic(err)
+	}()
+}
+
+func stop(ctx context.Context) error {
+	log.Info("trying to stop http service")
+	return server.Shutdown(ctx)
 }
