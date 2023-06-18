@@ -67,7 +67,9 @@ func start() {
 			log.Info("http service has been shutdown")
 			return
 		}
-		panic(err)
+		if err != nil {
+			panic(err)
+		}
 	}()
 }
 
