@@ -44,7 +44,7 @@ func NewHTTPServer(p params) (err error) {
 		port = parse.Port(os.Getenv(portStr))
 	}
 	if port == 0 {
-		log.Info("won't start http service")
+		log.GetLogger().Info("won't start http service")
 		return
 	}
 	if err = p.GatewayFunc(context.Background(), p.Handler, fmt.Sprintf(":%d", transport_grpc.GetPort()),
@@ -60,11 +60,11 @@ func NewHTTPServer(p params) (err error) {
 
 func start() {
 	go func() {
-		log.Info("start http service")
+		log.GetLogger().Info("start http service")
 		server = &http.Server{Addr: fmt.Sprintf(":%d", port), Handler: handler}
 		err := server.ListenAndServe()
 		if errors.Is(err, http.ErrServerClosed) {
-			log.Info("http service has been shutdown")
+			log.GetLogger().Info("http service has been shutdown")
 			return
 		}
 		if err != nil {
@@ -74,6 +74,6 @@ func start() {
 }
 
 func stop(ctx context.Context) error {
-	log.Info("trying to stop http service")
+	log.GetLogger().Info("trying to stop http service")
 	return server.Shutdown(ctx)
 }

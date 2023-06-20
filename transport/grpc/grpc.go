@@ -26,7 +26,7 @@ func NewGrpcServer(lc fx.Lifecycle, config *config.YAML) *grpc.Server {
 		port = parse.Port(os.Getenv(portStr))
 	}
 	if port == 0 {
-		log.Info("won't start grpc service")
+		log.GetLogger().Info("won't start grpc service")
 		return nil
 	}
 	server = grpc.NewServer()
@@ -43,7 +43,7 @@ func start() (err error) {
 	}
 	reflection.Register(server)
 	go func() {
-		log.Info("start grpc service")
+		log.GetLogger().Info("start grpc service")
 		err := server.Serve(lis)
 		if err != nil {
 			panic(err)
@@ -54,7 +54,7 @@ func start() (err error) {
 }
 
 func stop() {
-	log.Info("trying to stop grpc service")
+	log.GetLogger().Info("trying to stop grpc service")
 	server.GracefulStop()
 }
 
