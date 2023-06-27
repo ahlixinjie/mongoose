@@ -9,7 +9,7 @@ import (
 
 func Run(elements ...fx.Option) {
 	elements = append(elements, fx.Provide(config.NewProvider),
-		fx.Provide(grpc.NewGrpcServer), fx.Invoke(http.NewHTTPServer), //grpc must init before http
+		fx.Provide(grpc.NewGrpcServer), fx.Provide(http.NewHTTPServer), //grpc must init before http
 	)
 	app := fx.New(elements...)
 	app.Run()
