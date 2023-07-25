@@ -5,3 +5,7 @@ const (
 	ConfKeyHTTP = "HTTP"
 	ConfKeyRPC  = "RPC"
 )
+
+const (
+	HeaderRequestID = "X-Request-ID"
+)
