@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	stringconverter "github.com/ahlixinjie/go-utils/string/converter"
 	"github.com/ahlixinjie/mongoose/transport/common"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -17,7 +18,7 @@ type methodWrap struct {
 	method   reflect.Method
 }
 
-func AutoRegister(e *echo.Echo, server interface{}, prefix string, code2Http map[codes.Code]int) {
+func AutoRegister(e *echo.Echo, server interface{}, prefix string, code2Http func(codes.Code) int) {
 	receiverValue := reflect.ValueOf(server)
 	receiverType := reflect.TypeOf(server)
 	methods := make(map[string]*methodWrap)
@@ -48,7 +49,7 @@ func validateMethod(method reflect.Method) *methodWrap {
 	}
 
 	//last return arg needs to be error
-	if !methodType.Out(1).Implements(reflect.TypeOf((*context.Context)(nil)).Elem()) {
+	if !methodType.Out(1).Implements(reflect.TypeOf((*error)(nil)).Elem()) {
 		return nil
 	}
 
@@ -70,31 +71,32 @@ func validateMethod(method reflect.Method) *methodWrap {
 }
 
 func registerMethod(receiverValue reflect.Value, e *echo.Echo, prefix string,
-	methods map[string]*methodWrap, code2Http map[codes.Code]int) {
+	methods map[string]*methodWrap, code2Http func(codes.Code) int) {
 	codec := defaultCodec{code2Http: code2Http}
-	for methodName, method := range methods {
-		e.POST(prefix+methodName, func(c echo.Context) error {
-			req := reflect.New(method.ReqType).Interface()
-			err := codec.Decode(c.Request(), req)
-			if err != nil {
-				return err
-			}
-
-			ctx, err := GenCtxFromEcho(c)
-			if err != nil {
-				return err
-			}
-
-			res := method.method.Func.Call([]reflect.Value{receiverValue, reflect.ValueOf(ctx), reflect.ValueOf(req)})
-			return codec.EncodeResponse(c.Request(), c.Response(), res[0].Interface(), res[1].Interface().(error))
+	for k, v := range methods {
+		methodName, method := k, v
+		e.POST(prefix+stringconverter.CamelCaseToUnderscore(methodName), func(c echo.Context) error {
+			reply, respErr := func() (interface{}, error) {
+				req := reflect.New(method.ReqType).Interface()
+				err := codec.Decode(c.Request(), req)
+				if err != nil {
+					return nil, err
+				}
+				res := method.method.Func.Call([]reflect.Value{receiverValue, reflect.ValueOf(GenCtxFromEcho(c)), reflect.ValueOf(req)})
+				if res[1].Interface() != nil {
+					return nil, res[1].Interface().(error)
+				}
+				return res[0].Interface(), nil
+			}()
+			return codec.EncodeResponse(c.Request(), c.Response(), reply, respErr)
 		})
 	}
 }
 
-func GenCtxFromEcho(c echo.Context) (context.Context, error) {
-	var md = make(metadata.MD)
-	if err := (&echo.DefaultBinder{}).BindHeaders(c, &md); err != nil {
-		return nil, err
+func GenCtxFromEcho(c echo.Context) context.Context {
+	var md = metadata.New(make(map[string]string))
+	for k, v := range c.Request().Header.Clone() {
+		md.Append(k, v...)
 	}
 
 	if len(md.Get(common.HeaderRequestID)) == 0 {
@@ -102,5 +104,5 @@ func GenCtxFromEcho(c echo.Context) (context.Context, error) {
 	}
 	ctx := metadata.NewIncomingContext(c.Request().Context(), md)
 	c.SetRequest(c.Request().WithContext(ctx))
-	return ctx, nil
+	return ctx
 }

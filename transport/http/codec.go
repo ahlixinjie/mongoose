@@ -7,6 +7,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"net/http"
+	"strings"
 )
 
 type Codec interface {
@@ -25,13 +26,13 @@ type baseResponse struct {
 }
 
 type defaultCodec struct {
-	code2Http map[codes.Code]int
+	code2Http func(codes.Code) int
 }
 
 func (d defaultCodec) EncodeResponse(
 	r *http.Request, w http.ResponseWriter, respValue interface{}, respErr error) (err error) {
 	resp := baseResponse{
-		RequestID: metadata.ValueFromIncomingContext(r.Context(), common.HeaderRequestID)[0],
+		RequestID: metadata.ValueFromIncomingContext(r.Context(), strings.ToLower(common.HeaderRequestID))[0],
 		Code:      0,
 		Message:   "",
 		Data:      nil,
@@ -44,7 +45,7 @@ func (d defaultCodec) EncodeResponse(
 	s, _ := status.FromError(respErr)
 	resp.Code = s.Code()
 	resp.Message = s.Message()
-	w.WriteHeader(d.code2Http[resp.Code])
+	w.WriteHeader(d.code2Http(resp.Code))
 	return json.NewEncoder(w).Encode(&resp)
 }
 
