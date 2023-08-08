@@ -7,6 +7,7 @@ import (
 	"github.com/ahlixinjie/mongoose/log"
 	"github.com/ahlixinjie/mongoose/transport/common"
 	"github.com/ahlixinjie/mongoose/utils/parse"
+	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/config"
 	"go.uber.org/fx"
@@ -37,6 +38,7 @@ func NewHTTPServer(p params) *echo.Echo {
 		return nil
 	}
 	e = echo.New()
+	e.Validator = &validatorWrapper{validator: validator.New()}
 
 	p.Lc.Append(fx.StartHook(start))
 	p.Lc.Append(fx.StopHook(stop))

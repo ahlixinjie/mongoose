@@ -77,12 +77,19 @@ func registerMethod(receiverValue reflect.Value, e *echo.Echo, prefix string,
 		methodName, method := k, v
 		e.POST(prefix+stringconverter.CamelCaseToUnderscore(methodName), func(c echo.Context) error {
 			reply, respErr := func() (interface{}, error) {
+				ctx := GenCtxFromEchoAndSetRequest(c)
 				req := reflect.New(method.ReqType).Interface()
+
 				err := codec.Decode(c.Request(), req)
 				if err != nil {
 					return nil, err
 				}
-				res := method.method.Func.Call([]reflect.Value{receiverValue, reflect.ValueOf(GenCtxFromEcho(c)), reflect.ValueOf(req)})
+
+				if err = c.Validate(req); err != nil {
+					return nil, err
+				}
+
+				res := method.method.Func.Call([]reflect.Value{receiverValue, reflect.ValueOf(ctx), reflect.ValueOf(req)})
 				if res[1].Interface() != nil {
 					return nil, res[1].Interface().(error)
 				}
@@ -93,7 +100,7 @@ func registerMethod(receiverValue reflect.Value, e *echo.Echo, prefix string,
 	}
 }
 
-func GenCtxFromEcho(c echo.Context) context.Context {
+func GenCtxFromEchoAndSetRequest(c echo.Context) context.Context {
 	var md = metadata.New(make(map[string]string))
 	for k, v := range c.Request().Header.Clone() {
 		md.Append(k, v...)
