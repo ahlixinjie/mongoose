@@ -6,6 +6,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"net/http"
 	"strings"
 )
@@ -57,6 +59,13 @@ func (d defaultCodec) Decode(r *http.Request, requestValue interface{}) error {
 	}
 	if len(req.Body) == 0 {
 		return nil
+	}
+
+	if message, ok := requestValue.(proto.Message); ok {
+		return protojson.UnmarshalOptions{
+			AllowPartial:   true,
+			DiscardUnknown: true,
+		}.Unmarshal(req.Body, message)
 	}
 
 	return json.Unmarshal(req.Body, requestValue)
