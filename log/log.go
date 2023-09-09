@@ -14,6 +14,7 @@ import (
 
 const (
 	Region = "fiction-region"
+	UserID = "fiction-user-id"
 )
 
 var logger *zap.Logger
@@ -59,6 +60,9 @@ func GetLoggerWithCtx(ctx context.Context) *zap.Logger {
 	var l = logger
 	if region := list.GetFirstElement(metadata.ValueFromIncomingContext(ctx, Region)); len(region) != 0 {
 		l = l.With(zap.String(Region, region))
+	}
+	if userID := list.GetFirstElement(metadata.ValueFromIncomingContext(ctx, UserID)); len(userID) != 0 {
+		l = l.With(zap.String(UserID, userID))
 	}
 	if requestID := list.GetFirstElement(metadata.ValueFromIncomingContext(ctx, strings.ToLower(common.HeaderRequestID))); len(requestID) != 0 {
 		l = l.With(zap.String(common.HeaderRequestID, requestID))
